@@ -1,0 +1,501 @@
+[models.py]
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy.orm import relationship
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.sql import func
+
+Base = declarative_base()
+
+class DataEntry(Base):
+    __tablename__ = "data_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    description = Column(String, index=True)
+    queries = Column(String)
+    img_links = Column(String)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class ImageItem(Base):
+    __tablename__ = "image_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String)
+    url = Column(String)
+    world_cup_id = Column(Integer, ForeignKey('world_cups.id'))
+    world_cup = relationship("WorldCup", back_populates="items", foreign_keys=[world_cup_id])
+
+class WorldCup(Base):
+    __tablename__ = "world_cups"
+
+    id = Column(Integer, primary_key=True, index=True)
+    current_round = Column(Integer)
+    current_round_sub = Column(Integer)
+    current_matchup_id = Column(Integer, ForeignKey('image_items.id'))
+    current_matchup = relationship("ImageItem", foreign_keys=[current_matchup_id])
+    items = relationship("ImageItem", back_populates="world_cup", foreign_keys=[ImageItem.world_cup_id])
+
+
+[services.py]
+from fastapi import HTTPException, Depends
+from models import WorldCup, ImageItem
+from DB import crud, database
+from sqlalchemy.ext.asyncio import AsyncSession
+import random
+from typing import Dict
+
+world_cups = {}
+
+async def start_world_cup(session_id: str, id: int, db: AsyncSession) -> WorldCup:
+    from_db_items = await crud.get_image_items(db, int(id))
+    if not from_db_items:
+        raise HTTPException(status_code=404, detail="World Cup not found")
+    items = [ImageItem(name=data.name, url=data.url) for data in from_db_items]
+    random.shuffle(items)
+    
+    initial_matchup = (items[0], items[1])
+    world_cup = WorldCup(id=session_id, items=items, current_round=len(items), current_round_sub=0, current_matchup=initial_matchup)
+    world_cups[session_id] = world_cup
+    return world_cup
+
+def make_choice(session_id: str, choice: int) -> WorldCup:
+    if session_id not in world_cups:
+        raise HTTPException(status_code=404, detail="World Cup not started")
+
+    world_cup = world_cups[session_id]
+    if choice == 0:
+        lose = 1
+    else:
+        lose = 0
+
+    if len(world_cup.items) == 1:
+        raise HTTPException(status_code=400, detail="No more matchups available")
+    
+    world_cup.items[2*world_cup.current_round_sub+lose] = None
+    if world_cup.current_round_sub < world_cup.current_round // 2 - 1:
+        world_cup.current_round_sub += 1
+        world_cup.current_matchup = (world_cup.items[world_cup.current_round_sub*2], world_cup.items[world_cup.current_round_sub*2+1])
+    else:
+        world_cup.current_round //= 2
+        world_cup.current_round_sub = 0
+        world_cup.items = [item for item in world_cup.items if item is not None]
+        random.shuffle(world_cup.items)
+        if world_cup.current_round == 1:
+            world_cup.current_matchup = (world_cup.items[0], world_cup.items[0])
+        else:
+            world_cup.current_matchup = (world_cup.items[world_cup.current_round_sub*2], world_cup.items[world_cup.current_round_sub*2+1])
+    return world_cup
+
+def get_current_info(session_id: str) -> WorldCup:
+    if session_id not in world_cups:
+        raise HTTPException(status_code=404, detail="World Cup not started")
+    return world_cups[session_id]
+
+def end_world_cup(session_id: str):
+    if session_id in world_cups:
+        del world_cups[session_id]
+
+
+[py_to_text.py]
+import os
+
+def get_all_py_files(directory):
+    """Return a list of all .py files in a given directory, excluding __pycache__ directories."""
+    py_files = []
+    for root, _, files in os.walk(directory):
+        if '__pycache__' in root:
+            continue
+        for file in files:
+            if file.endswith(".py"):
+                py_files.append(os.path.join(root, file))
+    return py_files
+
+def write_py_files_to_notepad(directory, output_file):
+    """Write the contents of all .py files in a given directory to a notepad file."""
+    py_files = get_all_py_files(directory)
+    
+    with open(output_file, 'w', encoding='utf-8') as f:
+        for py_file in py_files:
+            relative_path = os.path.relpath(py_file, directory)
+            f.write(f"[{relative_path}]\n")
+            
+            with open(py_file, 'r', encoding='utf-8') as pf:
+                f.write(pf.read())
+            
+            f.write("\n\n")
+
+if __name__ == "__main__":
+    directory = "./"  # Replace with your directory
+    output_file = "py_files_contents.txt"
+    write_py_files_to_notepad(directory, output_file)
+    print(f"Contents written to {output_file}")
+
+
+[main.py]
+from fastapi import FastAPI, Depends, HTTPException
+from services import start_world_cup, make_choice, get_current_info, end_world_cup
+from schemas import StartRequest, ChoiceRequest, InfoResponse, ImageInfo
+import uuid
+from sqlalchemy.ext.asyncio import AsyncSession
+from DB import crud, schemas as db_schemas, database, models
+from worldcup_maker.service import get_top_image_urls
+
+app = FastAPI()
+
+# world cup
+@app.post("/start", response_model=InfoResponse)
+async def start(request: StartRequest, db: AsyncSession = Depends(database.get_db)):
+    session_id = str(uuid.uuid4())  # UUID 생성
+    world_cup = await start_world_cup(session_id, request.id, db)
+    return InfoResponse(
+        session_id=session_id,  # 세션 ID를 반환
+        current_round=world_cup.current_round, 
+        current_round_sub=world_cup.current_round_sub,
+        current_matchup=(
+            ImageInfo(name=world_cup.current_matchup[0].name, url=world_cup.current_matchup[0].url),
+            ImageInfo(name=world_cup.current_matchup[1].name, url=world_cup.current_matchup[1].url)
+        )
+    )
+
+@app.post("/choice", response_model=InfoResponse)
+def choice(request: ChoiceRequest, session_id: str):
+    world_cup = make_choice(session_id, request.choice)
+    return InfoResponse(
+        session_id=session_id,  # 세션 ID 반환
+        current_round=world_cup.current_round,
+        current_round_sub=world_cup.current_round_sub,
+        current_matchup=(
+            ImageInfo(name=world_cup.current_matchup[0].name, url=world_cup.current_matchup[0].url),
+            ImageInfo(name=world_cup.current_matchup[1].name, url=world_cup.current_matchup[1].url)
+        )
+    )
+
+@app.get("/info/{session_id}", response_model=InfoResponse)
+def info(session_id: str):
+    world_cup = get_current_info(session_id)
+    return InfoResponse(
+        session_id=session_id,  # 세션 ID 반환
+        current_round=world_cup.current_round, 
+        current_round_sub=world_cup.current_round_sub,
+        current_matchup=(
+            ImageInfo(name=world_cup.current_matchup[0].name, url=world_cup.current_matchup[0].url),
+            ImageInfo(name=world_cup.current_matchup[1].name, url=world_cup.current_matchup[1].url)
+        )
+    )
+
+@app.post("/end/{session_id}")
+def end(session_id: str):
+    end_world_cup(session_id)
+    return {"message": "World Cup ended"}
+
+# DB
+@app.on_event("startup")
+async def startup():
+    async with database.engine.begin() as conn:
+        await conn.run_sync(models.Base.metadata.create_all)
+
+@app.post("/data_entries_from_queries/", response_model=db_schemas.DataEntry)
+async def create_data_entry_from_queries(queries: list[str], db: AsyncSession = Depends(database.get_db)):
+    image_data = get_top_image_urls(queries)
+    data_entry_create = db_schemas.DataEntryCreate(
+        description="Generated from queries",
+        data=image_data
+    )
+    return await crud.create_data_entry(db, data_entry_create)
+
+[test.py]
+import asyncio
+import asyncpg
+
+async def test_connection():
+    conn = await asyncpg.connect(user='rabo', password='1234',
+                                 database='piku', host='localhost', port=5432)
+    await conn.close()
+
+asyncio.run(test_connection())
+
+
+[front.py]
+import streamlit as st
+import requests
+
+# 서버 URL 설정
+BASE_URL = "http://localhost:8000"
+
+# 세션 상태 유지
+if 'session_id' not in st.session_state:
+    st.session_state.session_id = None
+if 'current_round' not in st.session_state:
+    st.session_state.current_round = 0
+if 'current_round_sub' not in st.session_state:
+    st.session_state.current_round_sub = 0
+if 'current_matchup' not in st.session_state:
+    st.session_state.current_matchup = None
+
+def start_worldcup():
+    try:
+        response = requests.post(f"{BASE_URL}/start", json={"id": "7"})
+        response.raise_for_status()  # HTTPError가 발생하는지 확인
+        data = response.json()
+        st.session_state.session_id = data['session_id']
+        st.session_state.current_round = data['current_round']
+        st.session_state.current_round_sub = data['current_round_sub']
+        st.session_state.current_matchup = data['current_matchup']
+        st.experimental_rerun()  # 상태 변경 후 재실행
+    except requests.exceptions.RequestException as e:
+        st.error(f"An error occurred: {e}")
+        st.error(f"Response content: {response.content}")
+
+def make_choice(choice):
+    session_id = st.session_state.session_id
+    try:
+        response = requests.post(f"{BASE_URL}/choice?session_id={session_id}", json={"choice": choice})
+        response.raise_for_status()  # HTTPError가 발생하는지 확인
+        data = response.json()
+        st.session_state.current_round = data['current_round']
+        st.session_state.current_round_sub = data['current_round_sub']
+        st.session_state.current_matchup = data['current_matchup']
+        st.experimental_rerun()  # 상태 변경 후 재실행
+    except requests.exceptions.RequestException as e:
+        st.error(f"An error occurred: {e}")
+        st.error(f"Response content: {response.content}")
+
+def get_current_info():
+    session_id = st.session_state.session_id
+    try:
+        response = requests.get(f"{BASE_URL}/info/{session_id}")
+        response.raise_for_status()  # HTTPError가 발생하는지 확인
+        data = response.json()
+        st.session_state.current_round = data['current_round']
+        st.session_state.current_round_sub = data['current_round_sub']
+        st.session_state.current_matchup = data['current_matchup']
+    except requests.exceptions.RequestException as e:
+        st.error(f"An error occurred: {e}")
+        st.error(f"Response content: {response.content}")
+
+# UI 구성
+st.title("이상형 월드컵")
+
+if st.session_state.session_id is None:
+    if st.button("월드컵 시작"):
+        start_worldcup()
+
+if st.session_state.current_matchup and st.session_state.current_round != 1:
+    st.write(f"현재 라운드: {st.session_state.current_round}, 매치 {st.session_state.current_round_sub + 1}")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button(f"선택: {st.session_state.current_matchup[0]['name']}"):
+            make_choice(0)
+    with col2:
+        if st.button(f"선택: {st.session_state.current_matchup[1]['name']}"):
+            make_choice(1)
+
+    col1.image(st.session_state.current_matchup[0]['url'], use_column_width=True)
+    col2.image(st.session_state.current_matchup[1]['url'], use_column_width=True)
+
+if st.session_state.current_round == 1:
+    st.balloons()
+    st.success(f"최종 선택: {st.session_state.current_matchup[0]['name']}")
+    st.image(st.session_state.current_matchup[0]['url'], use_column_width=True)
+
+
+[schemas.py]
+from pydantic import BaseModel
+from typing import List, Tuple, Optional
+
+class StartRequest(BaseModel):
+    id: str
+
+class ChoiceRequest(BaseModel):
+    choice: int
+
+class ImageInfo(BaseModel):
+    name: str
+    url: str
+
+class InfoResponse(BaseModel):
+    session_id: str
+    current_round: int
+    current_round_sub: int
+    current_matchup: Tuple[ImageInfo, ImageInfo]
+
+class ImageItemBase(BaseModel):
+    name: str
+    url: str
+
+class ImageItem(ImageItemBase):
+    id: int
+    world_cup_id: int
+
+    class Config:
+        orm_mode = True
+
+class WorldCupBase(BaseModel):
+    current_round: int
+    current_round_sub: int
+
+class WorldCupCreate(WorldCupBase):
+    items: List[ImageItem]
+
+class WorldCup(WorldCupBase):
+    id: int
+    current_matchup: Optional[ImageItem]
+    items: List[ImageItem]
+
+    class Config:
+        orm_mode = True
+
+
+[worldcup_maker/service.py]
+import os
+import requests
+from dotenv import load_dotenv
+
+env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+load_dotenv(dotenv_path=env_path)
+
+def get_top_image_urls(queries):
+    api_key = os.getenv('googleSearchKey')
+    cse_id = os.getenv('googleCSEId')
+
+    result = []
+
+    for query in queries:
+        url = f"https://www.googleapis.com/customsearch/v1?q={query}&cx={cse_id}&key={api_key}&searchType=image&num=1"
+        response = requests.get(url)
+        data = response.json()
+        if 'items' in data and len(data['items']) > 0:
+            image_url = data['items'][0]['link']
+            result.append((query, image_url))
+        else:
+            result.append((query, None))
+
+    return result
+
+
+
+[worldcup_maker/schemas.py]
+
+
+[DB/config.py]
+import os
+from dotenv import load_dotenv
+
+env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+load_dotenv(dotenv_path=env_path)
+
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://user:password@localhost/dbname")
+
+
+[DB/crud.py]
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from . import models, schemas
+
+async def create_data_entry(db: AsyncSession, data_entry: schemas.DataEntryCreate):
+    queries = [item[0] for item in data_entry.data]
+    img_links = [item[1] for item in data_entry.data]
+    
+    db_entry = models.DataEntry(
+        description=data_entry.description,
+        queries=",".join(queries),
+        img_links=",".join(img_links)
+    )
+    db.add(db_entry)
+    await db.commit()
+    await db.refresh(db_entry)
+    return db_entry
+
+async def get_data_entry(db: AsyncSession, entry_id: int):
+    result = await db.execute(select(models.DataEntry).filter(models.DataEntry.id == entry_id))
+    db_entry = result.scalars().first()
+    if db_entry:
+        db_entry.queries = db_entry.queries.split(",") if db_entry.queries else []
+        db_entry.img_links = db_entry.img_links.split(",") if db_entry.img_links else []
+    return db_entry
+
+async def get_image_items(db: AsyncSession, id: int):
+    result = await db.execute(select(models.DataEntry).filter(models.DataEntry.id == id))
+    data_entry = result.scalars().first()
+    if not data_entry:
+        return []
+
+    queries = data_entry.queries.split(',')
+    img_links = data_entry.img_links.split(',')
+
+    image_items = [
+        models.ImageItem(name=query, url=img_link)
+        for query, img_link in zip(queries, img_links)
+    ]
+    return image_items
+
+[DB/models.py]
+from sqlalchemy import Column, Integer, String, DateTime
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.sql import func
+
+Base = declarative_base()
+
+class DataEntry(Base):
+    __tablename__ = "data_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    description = Column(String, index=True)
+    queries = Column(String)
+    img_links = Column(String)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class ImageItem(Base):
+    __tablename__ = "image_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String)
+    url = Column(String)
+    data_entry_id = Column(Integer, index=True)
+
+[DB/schemas.py]
+from pydantic import BaseModel
+from typing import List, Tuple
+from datetime import datetime
+
+class DataEntryBase(BaseModel):
+    description: str
+
+class DataEntryCreate(BaseModel):
+    description: str
+    data: List[Tuple[str, str]]
+
+class DataEntry(DataEntryBase):
+    id: int
+    queries: List[str]
+    img_links: List[str]
+    created_at: datetime
+
+    class Config:
+        orm_mode = True
+
+    @classmethod
+    def from_orm(cls, obj):
+        obj.queries = obj.queries.split(",") if obj.queries else []
+        obj.img_links = obj.img_links.split(",") if obj.img_links else []
+        return super().from_orm(obj)
+
+
+[DB/database.py]
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
+
+from .config import DATABASE_URL
+
+engine = create_async_engine(DATABASE_URL, echo=True)
+AsyncSessionLocal = sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
+    expire_on_commit=False
+)
+
+async def get_db():
+    async with AsyncSessionLocal() as session:
+        yield session
+
+

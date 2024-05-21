@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import update
 from . import models, schemas
 
 async def create_data_entry(db: AsyncSession, data_entry: schemas.DataEntryCreate):
@@ -52,3 +53,28 @@ async def get_data_entry_summary(db: AsyncSession):
         }
         for summary in summaries
     ]
+
+async def update_data_entry(db: AsyncSession, entry_id: int, data_entry: schemas.DataEntryCreate):
+    queries = [item[0] for item in data_entry.data]
+    img_links = [item[1] for item in data_entry.data]
+    
+    result = await db.execute(
+        update(models.DataEntry)
+        .where(models.DataEntry.id == entry_id)
+        .values(
+            description=data_entry.description,
+            queries=",".join(queries),
+            img_links=",".join(img_links)
+        )
+        .returning(models.DataEntry.id, models.DataEntry.description, models.DataEntry.created_at)
+    )
+    updated_entry = result.first()
+    await db.commit()
+    
+    if updated_entry:
+        return {
+            "id": updated_entry.id,
+            "description": updated_entry.description,
+            "created_at": updated_entry.created_at
+        }
+    return None

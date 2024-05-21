@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException
-from services import start_world_cup, make_choice, get_current_info, end_world_cup
-from schemas import DataRequestForm, StartRequest, ChoiceRequest, InfoResponse, ImageInfo, GenerateCandidatesRequest, GenerateCandidatesResponse
+from worldcup_simulator.services import start_world_cup, make_choice, get_current_info, end_world_cup
+from worldcup_simulator.schemas import DataRequestForm, StartRequest, ChoiceRequest, InfoResponse, ImageInfo, GenerateCandidatesRequest, GenerateCandidatesResponse
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from DB import crud, schemas as db_schemas, database, models
@@ -82,3 +82,15 @@ async def get_data_entry_summaries(db: AsyncSession = Depends(database.get_db)):
     if not summaries:
         raise HTTPException(status_code=404, detail="No data entries found")
     return {"summaries": summaries}
+
+@app.put("/data_entries/{entry_id}/", response_model=db_schemas.DataEntrySummary)
+async def update_data_entry(entry_id: int, data: DataRequestForm, db: AsyncSession = Depends(database.get_db)):
+    image_data = get_top_image_urls(data.candidates)
+    data_entry_update = db_schemas.DataEntryCreate(
+        description=data.description,
+        data=image_data
+    )
+    updated_entry = await crud.update_data_entry(db, entry_id, data_entry_update)
+    if not updated_entry:
+        raise HTTPException(status_code=404, detail="Data entry not found")
+    return updated_entry

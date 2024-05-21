@@ -19,11 +19,12 @@ def get_top_image_urls(queries):
         url = f"https://www.googleapis.com/customsearch/v1?q={query}&cx={cse_id}&key={api_key}&searchType=image&num=1"
         response = requests.get(url)
         data = response.json()
+        print(data)
         if 'items' in data and len(data['items']) > 0:
             image_url = data['items'][0]['link']
             result.append((query, image_url))
         else:
-            result.append((query, None))
+            result.append((query, "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQC0Mop6s6wJ2kNSKyAcHQRIjweaHlsr1Cv8CqijMIZBg&s"))
 
     return result
 

@@ -1,9 +1,13 @@
+import openai
 import os
 import requests
 from dotenv import load_dotenv
+import re
 
 env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
 load_dotenv(dotenv_path=env_path)
+openai_api_key = os.getenv('gptApiKey')
+client = openai.OpenAI(api_key=openai_api_key)
 
 def get_top_image_urls(queries):
     api_key = os.getenv('googleSearchKey')
@@ -23,3 +27,22 @@ def get_top_image_urls(queries):
 
     return result
 
+def generate_candidates(prompt, num_candidates):
+    full_prompt = f"Create a list of {num_candidates} candidates for: {prompt}. Surround each candidate with <>. If the prompt is in Korean, generate candidates in Korean; if it is in English, generate candidates in English. Also, ensure the candidates are unique."
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": full_prompt}
+        ],
+        max_tokens=1000,
+        temperature=0.7
+    )
+    candidates_text = response.choices[0].message.content
+    return candidates_text
+
+def extract_bracketed_strings(text):
+    pattern = r'<(.*?)>'
+    matches = re.findall(pattern, text)
+    filtered_matches = [match for match in matches if match.strip()]
+    return filtered_matches

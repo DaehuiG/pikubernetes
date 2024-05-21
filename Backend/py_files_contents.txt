@@ -95,41 +95,6 @@ def end_world_cup(session_id: str):
         del world_cups[session_id]
 
 
-[py_to_text.py]
-import os
-
-def get_all_py_files(directory):
-    """Return a list of all .py files in a given directory, excluding __pycache__ directories."""
-    py_files = []
-    for root, _, files in os.walk(directory):
-        if '__pycache__' in root:
-            continue
-        for file in files:
-            if file.endswith(".py"):
-                py_files.append(os.path.join(root, file))
-    return py_files
-
-def write_py_files_to_notepad(directory, output_file):
-    """Write the contents of all .py files in a given directory to a notepad file."""
-    py_files = get_all_py_files(directory)
-    
-    with open(output_file, 'w', encoding='utf-8') as f:
-        for py_file in py_files:
-            relative_path = os.path.relpath(py_file, directory)
-            f.write(f"[{relative_path}]\n")
-            
-            with open(py_file, 'r', encoding='utf-8') as pf:
-                f.write(pf.read())
-            
-            f.write("\n\n")
-
-if __name__ == "__main__":
-    directory = "./"  # Replace with your directory
-    output_file = "py_files_contents.txt"
-    write_py_files_to_notepad(directory, output_file)
-    print(f"Contents written to {output_file}")
-
-
 [main.py]
 from fastapi import FastAPI, Depends, HTTPException
 from services import start_world_cup, make_choice, get_current_info, end_world_cup
@@ -347,12 +312,16 @@ class WorldCup(WorldCupBase):
 
 
 [worldcup_maker/service.py]
+import openai
 import os
 import requests
 from dotenv import load_dotenv
+import re
 
 env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
 load_dotenv(dotenv_path=env_path)
+openai_api_key = os.getenv('gptApiKey')
+client = openai.OpenAI(api_key=openai_api_key)
 
 def get_top_image_urls(queries):
     api_key = os.getenv('googleSearchKey')
@@ -372,7 +341,25 @@ def get_top_image_urls(queries):
 
     return result
 
+def generate_candidates(prompt, num_candidates):
+    full_prompt = f"Create a list of {num_candidates} candidates for: {prompt}. Surround each candidate with <>. If the prompt is in Korean, generate candidates in Korean; if it is in English, generate candidates in English. Also, ensure the candidates are unique."
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": full_prompt}
+        ],
+        max_tokens=1000,
+        temperature=0.7
+    )
+    candidates_text = response.choices[0].message.content
+    return candidates_text
 
+def extract_bracketed_strings(text):
+    pattern = r'<(.*?)>'
+    matches = re.findall(pattern, text)
+    filtered_matches = [match for match in matches if match.strip()]
+    return filtered_matches
 
 [worldcup_maker/schemas.py]
 

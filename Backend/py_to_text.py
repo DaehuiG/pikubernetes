@@ -1,13 +1,13 @@
 import os
 
 def get_all_py_files(directory):
-    """Return a list of all .py files in a given directory, excluding __pycache__ directories."""
+    """Return a list of all .py files in a given directory, excluding __pycache__ directories and py_to_text.py itself."""
     py_files = []
     for root, _, files in os.walk(directory):
         if '__pycache__' in root:
             continue
         for file in files:
-            if file.endswith(".py"):
+            if file.endswith(".py") and file != "py_to_text.py":
                 py_files.append(os.path.join(root, file))
     return py_files
 

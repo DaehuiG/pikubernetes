@@ -11,7 +11,7 @@ class DataEntryCreate(BaseModel):
 
 class DataEntry(DataEntryBase):
     id: int
-    queries: List[str]
+    queries: List[str]                
     img_links: List[str]
     created_at: datetime
 
@@ -23,3 +23,11 @@ class DataEntry(DataEntryBase):
         obj.queries = obj.queries.split(",") if obj.queries else []
         obj.img_links = obj.img_links.split(",") if obj.img_links else []
         return super().from_orm(obj)
+
+class DataEntrySummary(BaseModel):
+    id: int
+    description: str
+    created_at: datetime
+
+class DataEntrySummaryList(BaseModel):
+    summaries: List[DataEntrySummary]

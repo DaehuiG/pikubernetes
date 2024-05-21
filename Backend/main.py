@@ -1,10 +1,10 @@
 from fastapi import FastAPI, Depends, HTTPException
 from services import start_world_cup, make_choice, get_current_info, end_world_cup
-from schemas import StartRequest, ChoiceRequest, InfoResponse, ImageInfo
+from schemas import DataRequestForm, StartRequest, ChoiceRequest, InfoResponse, ImageInfo, GenerateCandidatesRequest, GenerateCandidatesResponse
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from DB import crud, schemas as db_schemas, database, models
-from worldcup_maker.service import get_top_image_urls
+from worldcup_maker.service import get_top_image_urls, generate_candidates, extract_bracketed_strings
 
 app = FastAPI()
 
@@ -54,6 +54,13 @@ def end(session_id: str):
     end_world_cup(session_id)
     return {"message": "World Cup ended"}
 
+# gpt
+@app.post("/generate_candidates", response_model=GenerateCandidatesResponse)
+async def generate_candidates_endpoint(request: GenerateCandidatesRequest):
+    candidates_text = generate_candidates(request.prompt, request.num_candidates)
+    candidates = extract_bracketed_strings(candidates_text)
+    return GenerateCandidatesResponse(candidates=candidates)
+
 # DB
 @app.on_event("startup")
 async def startup():
@@ -61,10 +68,17 @@ async def startup():
         await conn.run_sync(models.Base.metadata.create_all)
 
 @app.post("/data_entries_from_queries/", response_model=db_schemas.DataEntry)
-async def create_data_entry_from_queries(queries: list[str], db: AsyncSession = Depends(database.get_db)):
-    image_data = get_top_image_urls(queries)
+async def create_data_entry_from_queries(data: DataRequestForm, db: AsyncSession = Depends(database.get_db)):
+    image_data = get_top_image_urls(data.candidates)
     data_entry_create = db_schemas.DataEntryCreate(
-        description="Generated from queries",
+        description=data.description,
         data=image_data
     )
     return await crud.create_data_entry(db, data_entry_create)
+
+@app.get("/data_entry_summaries/", response_model=db_schemas.DataEntrySummaryList)
+async def get_data_entry_summaries(db: AsyncSession = Depends(database.get_db)):
+    summaries = await crud.get_data_entry_summary(db)
+    if not summaries:
+        raise HTTPException(status_code=404, detail="No data entries found")
+    return {"summaries": summaries}

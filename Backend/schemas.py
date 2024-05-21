@@ -42,3 +42,14 @@ class WorldCup(WorldCupBase):
 
     class Config:
         orm_mode = True
+
+class GenerateCandidatesRequest(BaseModel):
+    prompt: str
+    num_candidates: int
+
+class GenerateCandidatesResponse(BaseModel):
+    candidates: List[str]
+
+class DataRequestForm(BaseModel):
+    description: str
+    candidates: List[str]

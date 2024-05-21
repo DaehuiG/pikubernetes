@@ -38,3 +38,17 @@ async def get_image_items(db: AsyncSession, id: int):
         for query, img_link in zip(queries, img_links)
     ]
     return image_items
+
+async def get_data_entry_summary(db: AsyncSession):
+    result = await db.execute(
+        select(models.DataEntry.id, models.DataEntry.description, models.DataEntry.created_at)
+    )
+    summaries = result.all()
+    return [
+        {
+            "id": summary.id,
+            "description": summary.description,
+            "created_at": summary.created_at
+        }
+        for summary in summaries
+    ]

@@ -1,16 +1,45 @@
-# Base 이미지
-FROM python:3.12-slim
+# Configure metadata
+ARG POETRY_VERSION="1.3.2"
+ARG PYTHON_VERSION="3.12"
+ARG PYTHON_DIST="bookworm"
 
-# 2. 작업 디렉토리를 /app으로 설정
-WORKDIR /code
-# 3. 현재 디렉토리의 requirements.txt 파일을 컨테이너의 /app으로 복사
-COPY requirements.txt /app/
-COPY . .
+# --- builder ----
+FROM "docker.io/library/python:${PYTHON_VERSION}-${PYTHON_DIST}" as builder
 
-# 4. requirements.txt에 명시된 패키지 설치
-RUN apt-get update
-RUN apt-get upgrade -y
-RUN pip3 install -r requirements.txt
+# Configure poetry environment variables
+ARG POETRY_CACHE_DIR=/tmp/poetry_cache
+ENV POETRY_NO_INTERACTION=1
+ARG POETRY_VERSION
+ENV POETRY_VIRTUALENVS_CREATE=1
+ENV POETRY_VIRTUALENVS_IN_PROJECT=1
 
-#8. 실행될 컨테이너 구성
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Install poetry
+RUN pip install --no-cache-dir "poetry==${POETRY_VERSION}"
+
+# Load package metadata
+WORKDIR /app
+
+COPY pyproject.toml ./
+
+# Install package dependencies
+RUN --mount=type=cache,target=${POETRY_CACHE_DIR} \
+    poetry install --no-root --without dev
+
+# --- runtime ----
+FROM "docker.io/library/python:${PYTHON_VERSION}-slim-${PYTHON_DIST}" as runtime
+
+# Configure entrypoint
+ENTRYPOINT ["/usr/bin/env"]
+CMD [ "streamlit", "run", "0_Home.py" ]
+
+# Configure runtime environment variables
+ENV PATH="/app/.venv/bin:${PATH}"
+ENV STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+ENV STREAMLIT_IS_PRODUCTION=true
+ENV STREAMLIT_SERVER_HEADLESS=true
+ENV STREAMLIT_SERVER_PORT=8501
+
+# Load package source codes
+WORKDIR /app
+COPY --from=builder /app/.venv .venv
+ADD ./ .

@@ -1,6 +1,9 @@
 # Base 이미지
 FROM python:3.12-slim
 
+RUN ln -snf /usr/share/zoneinfo/Asia/Seoul /etc/localtime
+RUN echo Asia/Seoul > /etc/timezone
+
 # 2. 작업 디렉토리를 /app으로 설정
 WORKDIR /code
 # 3. 현재 디렉토리의 requirements.txt 파일을 컨테이너의 /app으로 복사

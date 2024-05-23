@@ -1,9 +1,0 @@
-fastapi
-uvicorn[standard]
-sqlalchemy[asyncio]
-asyncpg
-pydantic
-requests
-streamlit
-python-dotenv
-openai

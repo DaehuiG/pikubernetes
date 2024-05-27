@@ -1,4 +1,119 @@
-[models.py]
+[main.py]
+from fastapi import FastAPI, Depends, HTTPException
+from worldcup_simulator.services import start_world_cup, make_choice, get_current_info, end_world_cup
+from worldcup_simulator.schemas import DataRequestForm, StartRequest, ChoiceRequest, InfoResponse, ImageInfo, GenerateCandidatesRequest, GenerateCandidatesResponse
+import uuid
+from sqlalchemy.ext.asyncio import AsyncSession
+from DB import crud, schemas as db_schemas, database, models
+from worldcup_maker.service import get_top_image_urls, generate_candidates, extract_bracketed_strings
+
+app = FastAPI()
+
+# world cup
+@app.post("/start", response_model=InfoResponse)
+async def start(request: StartRequest, db: AsyncSession = Depends(database.get_db)):
+    session_id = str(uuid.uuid4())  # UUID 생성
+    world_cup = await start_world_cup(session_id, request.id, db)
+    return InfoResponse(
+        session_id=session_id,  # 세션 ID를 반환
+        current_round=world_cup.current_round, 
+        current_round_sub=world_cup.current_round_sub,
+        current_matchup=(
+            ImageInfo(name=world_cup.current_matchup[0].name, url=world_cup.current_matchup[0].url),
+            ImageInfo(name=world_cup.current_matchup[1].name, url=world_cup.current_matchup[1].url)
+        )
+    )
+
+@app.post("/choice", response_model=InfoResponse)
+def choice(request: ChoiceRequest, session_id: str):
+    world_cup = make_choice(session_id, request.choice)
+    return InfoResponse(
+        session_id=session_id,  # 세션 ID 반환
+        current_round=world_cup.current_round,
+        current_round_sub=world_cup.current_round_sub,
+        current_matchup=(
+            ImageInfo(name=world_cup.current_matchup[0].name, url=world_cup.current_matchup[0].url),
+            ImageInfo(name=world_cup.current_matchup[1].name, url=world_cup.current_matchup[1].url)
+        )
+    )
+
+@app.get("/info/{session_id}", response_model=InfoResponse)
+def info(session_id: str):
+    world_cup = get_current_info(session_id)
+    return InfoResponse(
+        session_id=session_id,  # 세션 ID 반환
+        current_round=world_cup.current_round, 
+        current_round_sub=world_cup.current_round_sub,
+        current_matchup=(
+            ImageInfo(name=world_cup.current_matchup[0].name, url=world_cup.current_matchup[0].url),
+            ImageInfo(name=world_cup.current_matchup[1].name, url=world_cup.current_matchup[1].url)
+        )
+    )
+
+@app.post("/end/{session_id}")
+def end(session_id: str):
+    end_world_cup(session_id)
+    return {"message": "World Cup ended"}
+
+# gpt
+@app.post("/generate_candidates", response_model=GenerateCandidatesResponse)
+async def generate_candidates_endpoint(request: GenerateCandidatesRequest):
+    candidates_text = generate_candidates(request.prompt, request.num_candidates)
+    candidates = extract_bracketed_strings(candidates_text)
+    return GenerateCandidatesResponse(candidates=candidates)
+
+# DB
+@app.on_event("startup")
+async def startup():
+    async with database.engine.begin() as conn:
+        await conn.run_sync(models.Base.metadata.create_all)
+
+@app.post("/data_entries_from_queries/", response_model=db_schemas.DataEntry)
+async def create_data_entry_from_queries(data: DataRequestForm, db: AsyncSession = Depends(database.get_db)):
+    try:
+        image_data = get_top_image_urls(data.candidates)
+        data_entry_create = db_schemas.DataEntryCreate(
+            description=data.description,
+            data=image_data
+        )
+        print("\n\n\n", data_entry_create, "\n\n\n")
+        return await crud.create_data_entry(db, data_entry_create)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/data_entry_summaries/", response_model=db_schemas.DataEntrySummaryList)
+async def get_data_entry_summaries(db: AsyncSession = Depends(database.get_db)):
+    summaries = await crud.get_data_entry_summary(db)
+    if not summaries:
+        raise HTTPException(status_code=404, detail="No data entries found")
+    return {"summaries": summaries}
+
+@app.put("/data_entries/{entry_id}/", response_model=db_schemas.DataEntrySummary)
+async def update_data_entry(entry_id: int, data: DataRequestForm, db: AsyncSession = Depends(database.get_db)):
+    image_data = get_top_image_urls(data.candidates)
+    data_entry_update = db_schemas.DataEntryCreate(
+        description=data.description,
+        data=image_data
+    )
+    updated_entry = await crud.update_data_entry(db, entry_id, data_entry_update)
+    if not updated_entry:
+        raise HTTPException(status_code=404, detail="Data entry not found")
+    return updated_entry
+
+[test.py]
+import asyncio
+import asyncpg
+
+async def test_connection():
+    conn = await asyncpg.connect(user='rabo', password='1234',
+                                 database='piku', host='localhost', port=5432)
+    await conn.close()
+
+asyncio.run(test_connection())
+
+
+[worldcup_simulator/models.py]
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
@@ -34,15 +149,13 @@ class WorldCup(Base):
     current_matchup = relationship("ImageItem", foreign_keys=[current_matchup_id])
     items = relationship("ImageItem", back_populates="world_cup", foreign_keys=[ImageItem.world_cup_id])
 
-
-[services.py]
+[worldcup_simulator/services.py]
 from fastapi import HTTPException, Depends
-from models import WorldCup, ImageItem
 from DB import crud, database
+from worldcup_simulator.models import WorldCup, ImageItem
 from sqlalchemy.ext.asyncio import AsyncSession
 import random
 from typing import Dict
-
 world_cups = {}
 
 async def start_world_cup(session_id: str, id: int, db: AsyncSession) -> WorldCup:
@@ -95,176 +208,7 @@ def end_world_cup(session_id: str):
         del world_cups[session_id]
 
 
-[main.py]
-from fastapi import FastAPI, Depends, HTTPException
-from services import start_world_cup, make_choice, get_current_info, end_world_cup
-from schemas import StartRequest, ChoiceRequest, InfoResponse, ImageInfo
-import uuid
-from sqlalchemy.ext.asyncio import AsyncSession
-from DB import crud, schemas as db_schemas, database, models
-from worldcup_maker.service import get_top_image_urls
-
-app = FastAPI()
-
-# world cup
-@app.post("/start", response_model=InfoResponse)
-async def start(request: StartRequest, db: AsyncSession = Depends(database.get_db)):
-    session_id = str(uuid.uuid4())  # UUID 생성
-    world_cup = await start_world_cup(session_id, request.id, db)
-    return InfoResponse(
-        session_id=session_id,  # 세션 ID를 반환
-        current_round=world_cup.current_round, 
-        current_round_sub=world_cup.current_round_sub,
-        current_matchup=(
-            ImageInfo(name=world_cup.current_matchup[0].name, url=world_cup.current_matchup[0].url),
-            ImageInfo(name=world_cup.current_matchup[1].name, url=world_cup.current_matchup[1].url)
-        )
-    )
-
-@app.post("/choice", response_model=InfoResponse)
-def choice(request: ChoiceRequest, session_id: str):
-    world_cup = make_choice(session_id, request.choice)
-    return InfoResponse(
-        session_id=session_id,  # 세션 ID 반환
-        current_round=world_cup.current_round,
-        current_round_sub=world_cup.current_round_sub,
-        current_matchup=(
-            ImageInfo(name=world_cup.current_matchup[0].name, url=world_cup.current_matchup[0].url),
-            ImageInfo(name=world_cup.current_matchup[1].name, url=world_cup.current_matchup[1].url)
-        )
-    )
-
-@app.get("/info/{session_id}", response_model=InfoResponse)
-def info(session_id: str):
-    world_cup = get_current_info(session_id)
-    return InfoResponse(
-        session_id=session_id,  # 세션 ID 반환
-        current_round=world_cup.current_round, 
-        current_round_sub=world_cup.current_round_sub,
-        current_matchup=(
-            ImageInfo(name=world_cup.current_matchup[0].name, url=world_cup.current_matchup[0].url),
-            ImageInfo(name=world_cup.current_matchup[1].name, url=world_cup.current_matchup[1].url)
-        )
-    )
-
-@app.post("/end/{session_id}")
-def end(session_id: str):
-    end_world_cup(session_id)
-    return {"message": "World Cup ended"}
-
-# DB
-@app.on_event("startup")
-async def startup():
-    async with database.engine.begin() as conn:
-        await conn.run_sync(models.Base.metadata.create_all)
-
-@app.post("/data_entries_from_queries/", response_model=db_schemas.DataEntry)
-async def create_data_entry_from_queries(queries: list[str], db: AsyncSession = Depends(database.get_db)):
-    image_data = get_top_image_urls(queries)
-    data_entry_create = db_schemas.DataEntryCreate(
-        description="Generated from queries",
-        data=image_data
-    )
-    return await crud.create_data_entry(db, data_entry_create)
-
-[test.py]
-import asyncio
-import asyncpg
-
-async def test_connection():
-    conn = await asyncpg.connect(user='rabo', password='1234',
-                                 database='piku', host='localhost', port=5432)
-    await conn.close()
-
-asyncio.run(test_connection())
-
-
-[front.py]
-import streamlit as st
-import requests
-
-# 서버 URL 설정
-BASE_URL = "http://localhost:8000"
-
-# 세션 상태 유지
-if 'session_id' not in st.session_state:
-    st.session_state.session_id = None
-if 'current_round' not in st.session_state:
-    st.session_state.current_round = 0
-if 'current_round_sub' not in st.session_state:
-    st.session_state.current_round_sub = 0
-if 'current_matchup' not in st.session_state:
-    st.session_state.current_matchup = None
-
-def start_worldcup():
-    try:
-        response = requests.post(f"{BASE_URL}/start", json={"id": "7"})
-        response.raise_for_status()  # HTTPError가 발생하는지 확인
-        data = response.json()
-        st.session_state.session_id = data['session_id']
-        st.session_state.current_round = data['current_round']
-        st.session_state.current_round_sub = data['current_round_sub']
-        st.session_state.current_matchup = data['current_matchup']
-        st.experimental_rerun()  # 상태 변경 후 재실행
-    except requests.exceptions.RequestException as e:
-        st.error(f"An error occurred: {e}")
-        st.error(f"Response content: {response.content}")
-
-def make_choice(choice):
-    session_id = st.session_state.session_id
-    try:
-        response = requests.post(f"{BASE_URL}/choice?session_id={session_id}", json={"choice": choice})
-        response.raise_for_status()  # HTTPError가 발생하는지 확인
-        data = response.json()
-        st.session_state.current_round = data['current_round']
-        st.session_state.current_round_sub = data['current_round_sub']
-        st.session_state.current_matchup = data['current_matchup']
-        st.experimental_rerun()  # 상태 변경 후 재실행
-    except requests.exceptions.RequestException as e:
-        st.error(f"An error occurred: {e}")
-        st.error(f"Response content: {response.content}")
-
-def get_current_info():
-    session_id = st.session_state.session_id
-    try:
-        response = requests.get(f"{BASE_URL}/info/{session_id}")
-        response.raise_for_status()  # HTTPError가 발생하는지 확인
-        data = response.json()
-        st.session_state.current_round = data['current_round']
-        st.session_state.current_round_sub = data['current_round_sub']
-        st.session_state.current_matchup = data['current_matchup']
-    except requests.exceptions.RequestException as e:
-        st.error(f"An error occurred: {e}")
-        st.error(f"Response content: {response.content}")
-
-# UI 구성
-st.title("이상형 월드컵")
-
-if st.session_state.session_id is None:
-    if st.button("월드컵 시작"):
-        start_worldcup()
-
-if st.session_state.current_matchup and st.session_state.current_round != 1:
-    st.write(f"현재 라운드: {st.session_state.current_round}, 매치 {st.session_state.current_round_sub + 1}")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button(f"선택: {st.session_state.current_matchup[0]['name']}"):
-            make_choice(0)
-    with col2:
-        if st.button(f"선택: {st.session_state.current_matchup[1]['name']}"):
-            make_choice(1)
-
-    col1.image(st.session_state.current_matchup[0]['url'], use_column_width=True)
-    col2.image(st.session_state.current_matchup[1]['url'], use_column_width=True)
-
-if st.session_state.current_round == 1:
-    st.balloons()
-    st.success(f"최종 선택: {st.session_state.current_matchup[0]['name']}")
-    st.image(st.session_state.current_matchup[0]['url'], use_column_width=True)
-
-
-[schemas.py]
+[worldcup_simulator/schemas.py]
 from pydantic import BaseModel
 from typing import List, Tuple, Optional
 
@@ -310,6 +254,16 @@ class WorldCup(WorldCupBase):
     class Config:
         orm_mode = True
 
+class GenerateCandidatesRequest(BaseModel):
+    prompt: str
+    num_candidates: int
+
+class GenerateCandidatesResponse(BaseModel):
+    candidates: List[str]
+
+class DataRequestForm(BaseModel):
+    description: str
+    candidates: List[str]
 
 [worldcup_maker/service.py]
 import openai
@@ -333,11 +287,12 @@ def get_top_image_urls(queries):
         url = f"https://www.googleapis.com/customsearch/v1?q={query}&cx={cse_id}&key={api_key}&searchType=image&num=1"
         response = requests.get(url)
         data = response.json()
+        print(data)
         if 'items' in data and len(data['items']) > 0:
             image_url = data['items'][0]['link']
             result.append((query, image_url))
         else:
-            result.append((query, None))
+            result.append((query, "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQC0Mop6s6wJ2kNSKyAcHQRIjweaHlsr1Cv8CqijMIZBg&s"))
 
     return result
 
@@ -364,57 +319,23 @@ def extract_bracketed_strings(text):
 [worldcup_maker/schemas.py]
 
 
-[DB/config.py]
-import os
-from dotenv import load_dotenv
+[DB/database.py]
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
 
-env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
-load_dotenv(dotenv_path=env_path)
+from .config import DATABASE_URL
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://user:password@localhost/dbname")
+engine = create_async_engine(DATABASE_URL, echo=True)
+AsyncSessionLocal = sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
+    expire_on_commit=False
+)
 
+async def get_db():
+    async with AsyncSessionLocal() as session:
+        yield session
 
-[DB/crud.py]
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from . import models, schemas
-
-async def create_data_entry(db: AsyncSession, data_entry: schemas.DataEntryCreate):
-    queries = [item[0] for item in data_entry.data]
-    img_links = [item[1] for item in data_entry.data]
-    
-    db_entry = models.DataEntry(
-        description=data_entry.description,
-        queries=",".join(queries),
-        img_links=",".join(img_links)
-    )
-    db.add(db_entry)
-    await db.commit()
-    await db.refresh(db_entry)
-    return db_entry
-
-async def get_data_entry(db: AsyncSession, entry_id: int):
-    result = await db.execute(select(models.DataEntry).filter(models.DataEntry.id == entry_id))
-    db_entry = result.scalars().first()
-    if db_entry:
-        db_entry.queries = db_entry.queries.split(",") if db_entry.queries else []
-        db_entry.img_links = db_entry.img_links.split(",") if db_entry.img_links else []
-    return db_entry
-
-async def get_image_items(db: AsyncSession, id: int):
-    result = await db.execute(select(models.DataEntry).filter(models.DataEntry.id == id))
-    data_entry = result.scalars().first()
-    if not data_entry:
-        return []
-
-    queries = data_entry.queries.split(',')
-    img_links = data_entry.img_links.split(',')
-
-    image_items = [
-        models.ImageItem(name=query, url=img_link)
-        for query, img_link in zip(queries, img_links)
-    ]
-    return image_items
 
 [DB/models.py]
 from sqlalchemy import Column, Integer, String, DateTime
@@ -440,6 +361,105 @@ class ImageItem(Base):
     url = Column(String)
     data_entry_id = Column(Integer, index=True)
 
+[DB/config.py]
+import os
+from dotenv import load_dotenv
+
+env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+load_dotenv(dotenv_path=env_path)
+
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:1234@piku-postgres:5434/piku")
+
+
+[DB/crud.py]
+from http.client import HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from sqlalchemy import update
+from . import models, schemas
+from fastapi.logger import logger
+
+async def create_data_entry(db: AsyncSession, data_entry: schemas.DataEntryCreate):
+    try:
+        queries = [item[0] for item in data_entry.data]
+        img_links = [item[1] for item in data_entry.data]
+        
+        db_entry = models.DataEntry(
+            description=data_entry.description,
+            queries=",".join(queries),
+            img_links=",".join(img_links)
+        )
+        db.add(db_entry)
+        await db.commit()
+        await db.refresh(db_entry)
+        logger.info(f"Data entry saved to DB: {db_entry}")
+        return db_entry
+    except Exception as e:
+        logger.error(f"Error saving data entry: {e}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+async def get_data_entry(db: AsyncSession, entry_id: int):
+    result = await db.execute(select(models.DataEntry).filter(models.DataEntry.id == entry_id))
+    db_entry = result.scalars().first()
+    if db_entry:
+        db_entry.queries = db_entry.queries.split(",") if db_entry.queries else []
+        db_entry.img_links = db_entry.img_links.split(",") if db_entry.img_links else []
+    return db_entry
+
+async def get_image_items(db: AsyncSession, id: int):
+    result = await db.execute(select(models.DataEntry).filter(models.DataEntry.id == id))
+    data_entry = result.scalars().first()
+    if not data_entry:
+        return []
+
+    queries = data_entry.queries.split(',')
+    img_links = data_entry.img_links.split(',')
+
+    image_items = [
+        models.ImageItem(name=query, url=img_link)
+        for query, img_link in zip(queries, img_links)
+    ]
+    return image_items
+
+async def get_data_entry_summary(db: AsyncSession):
+    result = await db.execute(
+        select(models.DataEntry.id, models.DataEntry.description, models.DataEntry.created_at)
+    )
+    summaries = result.all()
+    return [
+        {
+            "id": summary.id,
+            "description": summary.description,
+            "created_at": summary.created_at
+        }
+        for summary in summaries
+    ]
+
+async def update_data_entry(db: AsyncSession, entry_id: int, data_entry: schemas.DataEntryCreate):
+    queries = [item[0] for item in data_entry.data]
+    img_links = [item[1] for item in data_entry.data]
+    
+    result = await db.execute(
+        update(models.DataEntry)
+        .where(models.DataEntry.id == entry_id)
+        .values(
+            description=data_entry.description,
+            queries=",".join(queries),
+            img_links=",".join(img_links)
+        )
+        .returning(models.DataEntry.id, models.DataEntry.description, models.DataEntry.created_at)
+    )
+    updated_entry = result.first()
+    await db.commit()
+    
+    if updated_entry:
+        return {
+            "id": updated_entry.id,
+            "description": updated_entry.description,
+            "created_at": updated_entry.created_at
+        }
+    return None
+
 [DB/schemas.py]
 from pydantic import BaseModel
 from typing import List, Tuple
@@ -454,7 +474,8 @@ class DataEntryCreate(BaseModel):
 
 class DataEntry(DataEntryBase):
     id: int
-    queries: List[str]
+    description: str
+    queries: List[str]                
     img_links: List[str]
     created_at: datetime
 
@@ -467,22 +488,194 @@ class DataEntry(DataEntryBase):
         obj.img_links = obj.img_links.split(",") if obj.img_links else []
         return super().from_orm(obj)
 
+class DataEntrySummary(BaseModel):
+    id: int
+    description: str
+    created_at: datetime
 
-[DB/database.py]
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
+class DataEntrySummaryList(BaseModel):
+    summaries: List[DataEntrySummary]
 
-from .config import DATABASE_URL
+[front_simple_test/front.py]
+import streamlit as st
+import requests
 
-engine = create_async_engine(DATABASE_URL, echo=True)
-AsyncSessionLocal = sessionmaker(
-    bind=engine,
-    class_=AsyncSession,
-    expire_on_commit=False
-)
+# 서버 URL 설정
+BASE_URL = "http://34.41.189.95:8000"
 
-async def get_db():
-    async with AsyncSessionLocal() as session:
-        yield session
+# 세션 상태 유지
+if 'session_id' not in st.session_state:
+    st.session_state.session_id = None
+if 'current_round' not in st.session_state:
+    st.session_state.current_round = 0
+if 'current_round_sub' not in st.session_state:
+    st.session_state.current_round_sub = 0
+if 'current_matchup' not in st.session_state:
+    st.session_state.current_matchup = None
+if 'home' not in st.session_state:
+    st.session_state.home = True
+if 'new_worldcup_id' not in st.session_state:
+    st.session_state.new_worldcup_id = None
+if 'candidates' not in st.session_state:
+    st.session_state.candidates = []
+if 'creating_worldcup' not in st.session_state:
+    st.session_state.creating_worldcup = False
+if 'num_candidates' not in st.session_state:
+    st.session_state.num_candidates = 16
+
+def load_data_entry_summaries():
+    try:
+        response = requests.get(f"{BASE_URL}/data_entry_summaries/")
+        response.raise_for_status()  # HTTPError가 발생하는지 확인
+        return response.json()['summaries']
+    except requests.exceptions.RequestException as e:
+        st.error(f"An error occurred: {e}")
+        return []
+
+def start_worldcup(entry_id):
+    try:
+        response = requests.post(f"{BASE_URL}/start", json={"id": str(entry_id)})
+        response.raise_for_status()  # HTTPError가 발생하는지 확인
+        data = response.json()
+        st.session_state.session_id = data['session_id']
+        st.session_state.current_round = data['current_round']
+        st.session_state.current_round_sub = data['current_round_sub']
+        st.session_state.current_matchup = data['current_matchup']
+        st.session_state.home = False
+        st.experimental_rerun()  # 상태 변경 후 재실행
+    except requests.exceptions.RequestException as e:
+        st.error(f"An error occurred: {e}")
+        st.error(f"Response content: {response.content}")
+
+def make_choice(choice):
+    session_id = st.session_state.session_id
+    try:
+        response = requests.post(f"{BASE_URL}/choice?session_id={session_id}", json={"choice": choice})
+        response.raise_for_status()  # HTTPError가 발생하는지 확인
+        data = response.json()
+        st.session_state.current_round = data['current_round']
+        st.session_state.current_round_sub = data['current_round_sub']
+        st.session_state.current_matchup = data['current_matchup']
+        st.experimental_rerun()  # 상태 변경 후 재실행
+    except requests.exceptions.RequestException as e:
+        st.error(f"An error occurred: {e}")
+        st.error(f"Response content: {response.content}")
+
+def generate_candidates(prompt, num_candidates):
+    try:
+        response = requests.post(f"{BASE_URL}/generate_candidates", json={"prompt": prompt, "num_candidates": num_candidates})
+        response.raise_for_status()  # HTTPError가 발생하는지 확인
+        return response.json()['candidates']
+    except requests.exceptions.RequestException as e:
+        st.error(f"An error occurred: {e}")
+        return []
+
+def create_new_worldcup(description, candidates):
+    try:
+        payload = {"description": description, "candidates": candidates}
+        st.write("Request Payload:", payload)  # 요청 페이로드 출력
+        response = requests.post(f"{BASE_URL}/data_entries_from_queries/", json=payload)
+        response.raise_for_status()  # HTTPError가 발생하는지 확인
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        st.error(f"An error occurred: {e}")
+        return None
+
+def update_worldcup(entry_id, description, candidates):
+    try:
+        response = requests.put(f"{BASE_URL}/data_entries/{entry_id}/", json={"description": description, "candidates": candidates})
+        response.raise_for_status()  # HTTPError가 발생하는지 확인
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        st.error(f"An error occurred: {e}")
+        return None
+
+def reset_home():
+    st.session_state.home = True
+    st.session_state.session_id = None
+    st.session_state.current_round = 0
+    st.session_state.current_round_sub = 0
+    st.session_state.current_matchup = None
+    st.session_state.new_worldcup_id = None
+    st.session_state.candidates = []
+    st.session_state.creating_worldcup = False
+    st.experimental_rerun()
+
+# UI 구성
+st.title("이상형 월드컵")
+
+if st.session_state.home:
+    if st.button("Play World Cup"):
+        st.session_state.home = False
+        st.experimental_rerun()
+    if st.button("Make World Cup"):
+        st.session_state.home = False
+        st.session_state.creating_worldcup = True
+        st.experimental_rerun()
+else:
+    if st.session_state.creating_worldcup:
+        prompt = st.text_input("새로운 월드컵의 주제를 입력하세요 (예: 연예인, 애니메이션 등):")
+        num_candidates = st.selectbox("후보 개수를 선택하세요:", [4, 8, 16, 32, 64], index=1)
+        if st.button("후보 생성하기"):
+            candidates = generate_candidates(prompt, num_candidates)
+            if candidates:
+                new_worldcup = create_new_worldcup(prompt, candidates)
+                if new_worldcup:
+                    st.session_state.new_worldcup_id = new_worldcup['id']
+                    st.session_state.candidates = candidates
+                    start_worldcup(new_worldcup['id'])
+                    st.session_state.creating_worldcup = False
+                    st.experimental_rerun()
+    elif st.session_state.session_id is None:
+        summaries = load_data_entry_summaries()
+        if summaries:
+            st.write("플레이 할 월드컵을 선택하세요:")
+            for summary in summaries:
+                if st.button(f"{summary['description']} (생성일: {summary['created_at']})"):
+                    start_worldcup(summary['id'])
+        else:
+            st.write("사용 가능한 월드컵 데이터가 없습니다.")
+            if st.button("홈으로 돌아가기"):
+                reset_home()
+
+    if st.session_state.current_matchup and st.session_state.current_round != 1:
+        st.write(f"현재 라운드: {st.session_state.current_round}, 매치 {st.session_state.current_round_sub + 1}")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button(f"선택: {st.session_state.current_matchup[0]['name']}"):
+                make_choice(0)
+        with col2:
+            if st.button(f"선택: {st.session_state.current_matchup[1]['name']}"):
+                make_choice(1)
+
+        col1.image(st.session_state.current_matchup[0]['url'], use_column_width=True)
+        col2.image(st.session_state.current_matchup[1]['url'], use_column_width=True)
+
+    if st.session_state.current_round == 1:
+        st.balloons()
+        st.success(f"최종 선택: {st.session_state.current_matchup[0]['name']}")
+        st.image(st.session_state.current_matchup[0]['url'], use_column_width=True)
+        if st.button("후보 수정하기"):
+            st.session_state.session_id = None
+            st.experimental_rerun()
+        if st.button("홈으로 돌아가기"):
+            reset_home()
+
+    if st.session_state.new_worldcup_id and not st.session_state.session_id:
+        st.write("후보를 수정하세요:")
+        updated_candidates = []
+        for candidate in st.session_state.candidates:
+            updated_candidate = st.text_input(f"후보:", value=candidate)
+            updated_candidates.append(updated_candidate)
+        
+        if st.button("후보 수정하기"):
+            updated_worldcup = update_worldcup(st.session_state.new_worldcup_id, "동물", updated_candidates)
+            if updated_worldcup:
+                st.success("후보가 성공적으로 수정되었습니다.")
+                st.session_state.new_worldcup_id = None
+                st.session_state.candidates = []
+                if st.button("홈으로 돌아가기"):
+                    reset_home()
 
 

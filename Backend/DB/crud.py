@@ -1,21 +1,28 @@
+from http.client import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import update
 from . import models, schemas
+from fastapi.logger import logger
 
 async def create_data_entry(db: AsyncSession, data_entry: schemas.DataEntryCreate):
-    queries = [item[0] for item in data_entry.data]
-    img_links = [item[1] for item in data_entry.data]
-    
-    db_entry = models.DataEntry(
-        description=data_entry.description,
-        queries=",".join(queries),
-        img_links=",".join(img_links)
-    )
-    db.add(db_entry)
-    await db.commit()
-    await db.refresh(db_entry)
-    return db_entry
+    try:
+        queries = [item[0] for item in data_entry.data]
+        img_links = [item[1] for item in data_entry.data]
+        
+        db_entry = models.DataEntry(
+            description=data_entry.description,
+            queries=",".join(queries),
+            img_links=",".join(img_links)
+        )
+        db.add(db_entry)
+        await db.commit()
+        await db.refresh(db_entry)
+        logger.info(f"Data entry saved to DB: {db_entry}")
+        return db_entry
+    except Exception as e:
+        logger.error(f"Error saving data entry: {e}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
 
 async def get_data_entry(db: AsyncSession, entry_id: int):
     result = await db.execute(select(models.DataEntry).filter(models.DataEntry.id == entry_id))

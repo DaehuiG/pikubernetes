@@ -69,12 +69,17 @@ async def startup():
 
 @app.post("/data_entries_from_queries/", response_model=db_schemas.DataEntry)
 async def create_data_entry_from_queries(data: DataRequestForm, db: AsyncSession = Depends(database.get_db)):
-    image_data = get_top_image_urls(data.candidates)
-    data_entry_create = db_schemas.DataEntryCreate(
-        description=data.description,
-        data=image_data
-    )
-    return await crud.create_data_entry(db, data_entry_create)
+    try:
+        image_data = get_top_image_urls(data.candidates)
+        data_entry_create = db_schemas.DataEntryCreate(
+            description=data.description,
+            data=image_data
+        )
+        new_entry = await crud.create_data_entry(db, data_entry_create)
+        return db_schemas.DataEntry.from_orm(new_entry)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/data_entry_summaries/", response_model=db_schemas.DataEntrySummaryList)
 async def get_data_entry_summaries(db: AsyncSession = Depends(database.get_db)):

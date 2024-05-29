@@ -53,3 +53,9 @@ class GenerateCandidatesResponse(BaseModel):
 class DataRequestForm(BaseModel):
     description: str
     candidates: List[str]
+
+class CompareRequest(BaseModel):
+    description: str
+
+class CompareResponse(BaseModel):
+    similar_descriptions: List[Tuple[int, str]]

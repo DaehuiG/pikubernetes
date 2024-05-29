@@ -41,11 +41,10 @@ async def get_image_items(db: AsyncSession, id: int):
     queries = data_entry.queries.split(',')
     img_links = data_entry.img_links.split(',')
 
-    image_items = [
+    return [
         models.ImageItem(name=query, url=img_link)
         for query, img_link in zip(queries, img_links)
     ]
-    return image_items
 
 async def get_data_entry_summary(db: AsyncSession):
     result = await db.execute(
@@ -85,3 +84,9 @@ async def update_data_entry(db: AsyncSession, entry_id: int, data_entry: schemas
             "created_at": updated_entry.created_at
         }
     return None
+
+async def get_all_descriptions(db: AsyncSession):
+    result = await db.execute(
+        select(models.DataEntry.id, models.DataEntry.description)
+    )
+    return result.all()

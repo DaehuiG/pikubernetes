@@ -5,20 +5,17 @@ from datetime import datetime
 class DataEntryBase(BaseModel):
     description: str
 
-class DataEntryCreate(BaseModel):
-    description: str
+class DataEntryCreate(DataEntryBase):
     data: List[Tuple[str, str]]
 
 class DataEntry(DataEntryBase):
     id: int
-    description: str
     queries: List[str]                
     img_links: List[str]
     created_at: datetime
 
     class Config:
         orm_mode = True
-        from_attributes = True
 
     @classmethod
     def from_orm(cls, obj):

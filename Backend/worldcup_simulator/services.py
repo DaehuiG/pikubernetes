@@ -1,9 +1,9 @@
-from fastapi import HTTPException, Depends
-from DB import crud, database
+from fastapi import HTTPException
+from db import crud
 from worldcup_simulator.models import WorldCup, ImageItem
 from sqlalchemy.ext.asyncio import AsyncSession
 import random
-from typing import Dict
+
 world_cups = {}
 
 async def start_world_cup(session_id: str, id: int, db: AsyncSession) -> WorldCup:

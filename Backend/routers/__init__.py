@@ -1,5 +1,6 @@
 from . import (  # noqa: F401
-    functions,
+    data,
     health,
     home,
+    worldcup,
 )

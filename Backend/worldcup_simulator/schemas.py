@@ -48,6 +48,7 @@ class GenerateCandidatesRequest(BaseModel):
     num_candidates: int
 
 class GenerateCandidatesResponse(BaseModel):
+    new_description: str
     candidates: List[str]
 
 class DataRequestForm(BaseModel):

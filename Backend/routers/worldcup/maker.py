@@ -7,5 +7,5 @@ router = APIRouter(tags=['worldcup'])
 @router.post("/generate_candidates", response_model=GenerateCandidatesResponse)
 async def generate_candidates_endpoint(request: GenerateCandidatesRequest):
     candidates_text = generate_candidates(request.prompt, request.num_candidates)
-    candidates = extract_bracketed_strings(candidates_text)
-    return GenerateCandidatesResponse(candidates=candidates)
+    new_description, candidates = extract_bracketed_strings(candidates_text)
+    return GenerateCandidatesResponse(new_description=new_description, candidates=candidates)

@@ -11,7 +11,7 @@ router = APIRouter(
 @router.post("/data_entries_from_queries/", response_model=db_schemas.DataEntry)
 async def create_data_entry_from_queries(data: DataRequestForm, db: AsyncSession = Depends(database.get_db)):
     try:
-        image_data = get_top_image_urls(data.candidates)
+        image_data = get_top_image_urls(data.description, data.candidates)
         data_entry_create = db_schemas.DataEntryCreate(
             description=data.description,
             data=image_data
@@ -37,7 +37,7 @@ async def get_data_entry(entry_id: int, db: AsyncSession = Depends(database.get_
 
 @router.put("/data_entries/{entry_id}/", response_model=db_schemas.DataEntrySummary)
 async def update_data_entry(entry_id: int, data: DataRequestForm, db: AsyncSession = Depends(database.get_db)):
-    image_data = get_top_image_urls(data.candidates)
+    image_data = get_top_image_urls(data.description, data.candidates)
     data_entry_update = db_schemas.DataEntryCreate(
         description=data.description,
         data=image_data

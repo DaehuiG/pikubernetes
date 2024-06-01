@@ -3,7 +3,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db import crud, schemas as db_schemas, database
 from worldcup_maker.service import get_top_image_urls, compare_descriptions
 from worldcup_simulator.schemas import DataRequestForm, CompareRequest, CompareResponse
-import openai
 
 router = APIRouter(
     tags=['data'],
@@ -28,6 +27,13 @@ async def get_data_entry_summaries(db: AsyncSession = Depends(database.get_db)):
     if not summaries:
         raise HTTPException(status_code=404, detail="No data entries found")
     return {"summaries": summaries}
+
+@router.get("/data_entries/{entry_id}/", response_model=db_schemas.DataEntry)
+async def get_data_entry(entry_id: int, db: AsyncSession = Depends(database.get_db)):
+    data_entry = await crud.get_data_entry(db, entry_id)
+    if not data_entry:
+        raise HTTPException(status_code=404, detail="Data entry not found")
+    return data_entry
 
 @router.put("/data_entries/{entry_id}/", response_model=db_schemas.DataEntrySummary)
 async def update_data_entry(entry_id: int, data: DataRequestForm, db: AsyncSession = Depends(database.get_db)):

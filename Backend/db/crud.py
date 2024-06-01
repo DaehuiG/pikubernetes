@@ -28,8 +28,8 @@ async def get_data_entry(db: AsyncSession, entry_id: int):
     result = await db.execute(select(models.DataEntry).filter(models.DataEntry.id == entry_id))
     db_entry = result.scalars().first()
     if db_entry:
-        db_entry.queries = db_entry.queries.split(",") if db_entry.queries else []
-        db_entry.img_links = db_entry.img_links.split(",") if db_entry.img_links else []
+        db_entry.queries = db_entry.queries if isinstance(db_entry.queries, str) else db_entry.queries
+        db_entry.img_links = db_entry.img_links if isinstance(db_entry.img_links, str) else db_entry.img_links
     return db_entry
 
 async def get_image_items(db: AsyncSession, id: int):
@@ -84,6 +84,12 @@ async def update_data_entry(db: AsyncSession, entry_id: int, data_entry: schemas
             "created_at": updated_entry.created_at
         }
     return None
+
+async def get_all_descriptions(db: AsyncSession):
+    result = await db.execute(
+        select(models.DataEntry.id, models.DataEntry.description)
+    )
+    return result.all()
 
 async def get_all_descriptions(db: AsyncSession):
     result = await db.execute(

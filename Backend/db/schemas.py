@@ -1,3 +1,5 @@
+# db/schemas.py
+
 from pydantic import BaseModel
 from typing import List, Tuple
 from datetime import datetime
@@ -10,7 +12,8 @@ class DataEntryCreate(DataEntryBase):
 
 class DataEntry(DataEntryBase):
     id: int
-    queries: List[str]                
+    description: str
+    queries: List[str]
     img_links: List[str]
     created_at: datetime
 
@@ -31,3 +34,9 @@ class DataEntrySummary(BaseModel):
 
 class DataEntrySummaryList(BaseModel):
     summaries: List[DataEntrySummary]
+
+class CompareRequest(BaseModel):
+    description: str
+
+class CompareResponse(BaseModel):
+    similar_descriptions: List[Tuple[int, str]]

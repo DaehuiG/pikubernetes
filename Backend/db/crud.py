@@ -28,8 +28,8 @@ async def get_data_entry(db: AsyncSession, entry_id: int):
     result = await db.execute(select(models.DataEntry).filter(models.DataEntry.id == entry_id))
     db_entry = result.scalars().first()
     if db_entry:
-        db_entry.queries = db_entry.queries if isinstance(db_entry.queries, str) else db_entry.queries
-        db_entry.img_links = db_entry.img_links if isinstance(db_entry.img_links, str) else db_entry.img_links
+        db_entry.queries = db_entry.queries.split(",") if isinstance(db_entry.queries, str) else db_entry.queries
+        db_entry.img_links = db_entry.img_links.split(",") if isinstance(db_entry.img_links, str) else db_entry.img_links
     return db_entry
 
 async def get_image_items(db: AsyncSession, id: int):

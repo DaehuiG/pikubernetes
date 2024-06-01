@@ -9,3 +9,5 @@ __pycache__/
 # Backend specific
 Backend/__pycache__/
 Backend/*.env
+
+k3s/secret.yaml

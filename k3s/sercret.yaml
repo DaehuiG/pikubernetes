@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: backend-secrets
+  namespace: piku
+type: Opaque
+stringData:
+  googleSearchKey: ${googleSearchKey}
+  googleCSEId: ${googleCSEId}
+  DATABASE_URL: ${DATABASE_URL}
+  gptApiKey: ${gptApiKey}

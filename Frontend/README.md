@@ -11,7 +11,7 @@
 poetry install --all-extras
 
 # Run!
-streamlit run 0_Home.py
+streamlit run Home.py
 ```
 
 ## Build a Container image

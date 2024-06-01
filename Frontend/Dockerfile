@@ -1,45 +1,21 @@
-# Configure metadata
-ARG POETRY_VERSION="1.3.2"
-ARG PYTHON_VERSION="3.12"
-ARG PYTHON_DIST="bookworm"
+# 베이스 이미지로 Python 3.9 사용
+FROM python:3.9
 
-# --- builder ----
-FROM "docker.io/library/python:${PYTHON_VERSION}-${PYTHON_DIST}" as builder
-
-# Configure poetry environment variables
-ARG POETRY_CACHE_DIR=/tmp/poetry_cache
-ENV POETRY_NO_INTERACTION=1
-ARG POETRY_VERSION
-ENV POETRY_VIRTUALENVS_CREATE=1
-ENV POETRY_VIRTUALENVS_IN_PROJECT=1
-
-# Install poetry
-RUN pip install --no-cache-dir "poetry==${POETRY_VERSION}"
-
-# Load package metadata
+# 작업 디렉토리를 설정
 WORKDIR /app
 
-COPY pyproject.toml ./
+# 필요한 패키지 목록 불러오기
+COPY requirements.txt .
 
-# Install package dependencies
-RUN --mount=type=cache,target=${POETRY_CACHE_DIR} \
-    poetry install --no-root --without dev
+# 패키지를 설치
+RUN pip install --no-cache-dir -r requirements.txt
 
-# --- runtime ----
-FROM "docker.io/library/python:${PYTHON_VERSION}-slim-${PYTHON_DIST}" as runtime
+# 애플리케이션 코드를 복사
+COPY . .
 
-# Configure entrypoint
-ENTRYPOINT ["/usr/bin/env"]
-CMD [ "streamlit", "run", "0_Home.py" ]
+# Streamlit 설정 파일 생성
+RUN mkdir -p ~/.streamlit && \
+    echo "[server]\nheadless = true\nport = 80\nenableCORS = false\n\n" > ~/.streamlit/config.toml
 
-# Configure runtime environment variables
-ENV PATH="/app/.venv/bin:${PATH}"
-ENV STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
-ENV STREAMLIT_IS_PRODUCTION=true
-ENV STREAMLIT_SERVER_HEADLESS=true
-ENV STREAMLIT_SERVER_PORT=8501
-
-# Load package source codes
-WORKDIR /app
-COPY --from=builder /app/.venv .venv
-ADD ./ .
+# 컨테이너 시작 시 Streamlit 앱을 실행
+CMD ["streamlit", "run", "front.py"]

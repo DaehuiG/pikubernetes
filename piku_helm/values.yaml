@@ -11,7 +11,7 @@ postgresql:
   targetPort: 5432
 
 backend:
-  image: docker.io/pengdol2/pikubernetes-backend:v0.3
+  image: docker.io/pengdol2/pikubernetes-backend:v1.0
   googleSearchKey: ${googleSearchKey}
   googleCSEId: ${googleCSEId}
   DATABASE_URL: ${DATABASE_URL}
@@ -21,7 +21,7 @@ backend:
   protocol: TCP
 
 frontend:
-  image: docker.io/pengdol2/pikubernetes-frontend:v0.3
+  image: docker.io/pengdol2/pikubernetes-frontend:v1.0
   port: 80
   targetPort: 80
   protocol: TCP

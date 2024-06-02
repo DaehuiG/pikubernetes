@@ -16,7 +16,7 @@ def hide_sidebar():
     """, unsafe_allow_html=True)
 
 
-BASE_URL = "http://34.41.189.95:8000"
+BASE_URL = "http://YOUR_ADDRESS_HERE:port"
 
 # 세션 상태 유지
 if 'session_id' not in st.session_state:

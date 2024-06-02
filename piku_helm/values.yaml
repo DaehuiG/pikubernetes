@@ -1,0 +1,27 @@
+namespace: pikubernetes
+
+postgresql:
+  image: postgres:14
+  username: "postgres"
+  password: "1234"
+  database: "piku"
+  pgdata: /var/lib/postgresql/data/pgdata
+  mountpath: /var/lib/postgresql/data
+  port: 5432
+  targetPort: 5432
+
+backend:
+  image: docker.io/pengdol2/pikubernetes-backend:v0.3
+  googleSearchKey: ${googleSearchKey}
+  googleCSEId: ${googleCSEId}
+  DATABASE_URL: ${DATABASE_URL}
+  gptApiKey: ${gptApiKey}
+  port: 8000
+  targetPort: 8000
+  protocol: TCP
+
+frontend:
+  image: docker.io/pengdol2/pikubernetes-frontend:v0.3
+  port: 80
+  targetPort: 80
+  protocol: TCP

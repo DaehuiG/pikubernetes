@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 
 # 서버 URL 설정
-BASE_URL = "http://34.41.189.95:8000"
+BASE_URL = "http://34.134.254.211:8000"
 
 # 세션 상태 유지
 if 'session_id' not in st.session_state:

@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+      - name: backend
+        image: {{ .Values.backend.image }}
+        ports:
+        - containerPort: {{ .Values.backend.port }}
+          name: backend
+        env:
+        - name: googleSearchKey
+          value: "{{ .Values.backend.googleSearchKey }}"
+        - name: googleCSEId
+          value: "{{ .Values.backend.googleCSEId }}"
+        - name: DATABASE_URL
+          value: "{{ .Values.backend.databaseUrl }}"
+        - name: gptApiKey
+          value: "{{ .Values.backend.gptApiKey }}"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: {{ .Values.namespace }}
+spec:
+  type: LoadBalancer
+  ports:
+  - port: {{ .Values.backend.port }}
+    targetPort: {{ .Values.backend.targetPort }}
+    protocol: {{ .Values.backend.protocol }}
+  selector:
+    app: backend

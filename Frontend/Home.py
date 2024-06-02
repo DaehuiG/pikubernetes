@@ -39,32 +39,49 @@ if 'play_worldcup' not in st.session_state:
     st.session_state.play_worldcup = False
 if 'edit_worldcup' not in st.session_state:
     st.session_state.edit_worldcup = False
+if 'edit_worldcup_loaded' not in st.session_state:
+    st.session_state.edit_worldcup_loaded = False
+if 'page_number' not in st.session_state:
+    st.session_state.page_number = None
 if 'num_candidates' not in st.session_state:
     st.session_state.num_candidates = 16
+if 'prompt' not in st.session_state:
+    st.session_state.prompt = None
+if 'similar_exist' not in st.session_state:
+    st.session_state.similar_exist = False
+if 'similar_candidates' not in st.session_state:
+    st.session_state.similar_candidates = None
 
 hide_sidebar()
 
-st.title("이상형 월드컵")
+st.title("Pikubernetes")
+
+st.subheader("AI로 쉽게 만드는 나만의 이상형 월드컵", divider="blue")
 
 if st.session_state.home:
-    if st.button("Play World Cup", key="play_worldcup_button"):
-        st.session_state.home = False
-        st.session_state.play_worldcup = True
-        st.rerun()
-
-    if st.button("Make World Cup", key="make_worldcup_button"):
-        st.session_state.home = False
-        st.session_state.create_worldcup = True
-        st.rerun()
-
-    if st.button("Edit World Cups", key="edit_worldcup_button"):
-        st.session_state.home = False
-        st.session_state.edit_worldcup = True
-        st.rerun()
+    col1, col2, col3, empty= st.columns([0.2,0.2,0.2,0.3])
+    with col1:
+        if st.button("Play World Cup", key="play_worldcup_button"):
+            st.session_state.home = False
+            st.session_state.play_worldcup = True
+            st.rerun()
+    with col2:
+        if st.button("Make World Cup", key="make_worldcup_button"):
+            st.session_state.home = False
+            st.session_state.create_worldcup = True
+            st.rerun()
+    with col3:
+        if st.button("Edit World Cups", key="edit_worldcup_button"):
+            st.session_state.home = False
+            st.session_state.edit_worldcup = True
+            st.rerun()
 
 else:
     if st.session_state.create_worldcup:
-        create_worldcup_page.worldcup_create_page(BASE_URL)
+        if st.session_state.similar_exist:
+            create_worldcup_page.worldcup_similar_check(BASE_URL)
+        else:
+            create_worldcup_page.worldcup_create_page(BASE_URL)
 
     elif st.session_state.play_worldcup:
         if st.session_state.current_matchup:
@@ -73,7 +90,7 @@ else:
             play_worldcup_page.select_worldcup_page(BASE_URL)
 
     elif st.session_state.edit_worldcup:
-        if st.session_state.current_matchup:
+        if st.session_state.edit_worldcup_loaded :
             edit_worldcup_page.edit_worldcup_page(BASE_URL)
         else:
             edit_worldcup_page.select_worldcup_page(BASE_URL)

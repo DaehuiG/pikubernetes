@@ -4,13 +4,13 @@ import streamlit as st
 
 def choose_update_worldcup(entry_id, BASE_URL):
     try:
-        response = requests.post(f"{BASE_URL}/start", json={"id": str(entry_id)})
+        response = requests.get(f"{BASE_URL}/data_entries/{entry_id}")
         response.raise_for_status()  # HTTPError가 발생하는지 확인
         data = response.json()
-        st.session_state.session_id = data['session_id']
-        st.session_state.current_round = data['current_round']
-        st.session_state.current_round_sub = data['current_round_sub']
-        st.session_state.current_matchup = data['current_matchup']
+        st.session_state.new_worldcup_id = data['id']
+        st.session_state.candidates = data['queries']
+        st.session_state.prompt = data['description']
+        st.session_state.edit_worldcup_loaded = True
         st.session_state.home = False
         st.rerun()  # 상태 변경 후 재실행
     except requests.exceptions.RequestException as e:

@@ -19,7 +19,7 @@ def generate_candidates(prompt, num_candidates, BASE_URL):
         response = requests.post(f"{BASE_URL}/generate_candidates",
                                  json={"prompt": prompt, "num_candidates": num_candidates})
         response.raise_for_status()  # HTTPError가 발생하는지 확인
-        return response.json()['candidates']
+        return response.json()
     except requests.exceptions.RequestException as e:
         st.error(f"An error occurred: {e}")
         return []

@@ -1,0 +1,4 @@
+apiVersion: v2
+name: piku
+description: A Helm chart for deploying the pikubernetes application
+version: 0.1.0

@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+      - name: frontend
+        image: {{ .Values.frontend.image }}
+        ports:
+        - containerPort: {{ .Values.frontend.port }}
+          name: frontend
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: {{ .Values.namespace }}
+spec:
+  type: LoadBalancer
+  ports:
+  - port: {{ .Values.frontend.port }}
+    targetPort: {{ .Values.frontend.targetPort }}
+    protocol: {{ .Values.frontend.protocol }}
+  selector:
+    app: frontend

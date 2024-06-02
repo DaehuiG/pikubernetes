@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      initContainers:
+      - name: init-postgres-config
+        image: busybox
+        command: ['sh', '-c', 'cp /config/postgresql.conf /mnt/data/postgresql.conf && cp /config/pg_hba.conf /mnt/data/pg_hba.conf']
+        volumeMounts:
+        - name: postgres-config
+          mountPath: /config
+        - name: postgres-data
+          mountPath: /mnt/data
+      containers:
+      - name: postgres
+        image: {{ .Values.postgresql.image }}
+        ports:
+        - containerPort: {{ .Values.postgresql.port }}
+          name: postgres
+        env:
+        - name: POSTGRES_USER
+          valueFrom:
+            configMapKeyRef:
+              name: postgres-config
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            configMapKeyRef:
+              name: postgres-config
+              key: POSTGRES_PASSWORD
+        - name: POSTGRES_DB
+          valueFrom:
+            configMapKeyRef:
+              name: postgres-config
+              key: POSTGRES_DB
+        - name: PGDATA
+          value: {{ .Values.postgresql.pgdata }}
+        volumeMounts:
+        - name: postgres-data
+          mountPath: {{ .Values.postgresql.mountpath }}
+      volumes:
+      - name: postgres-config
+        configMap:
+          name: postgres-config
+          items:
+            - key: postgresql.conf
+              path: postgresql.conf
+            - key: pg_hba.conf
+              path: pg_hba.conf
+      - name: postgres-data
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: {{ .Values.namespace }}
+spec:
+  ports:
+  - port: {{ .Values.postgresql.port }}
+    targetPort: {{ .Values.postgresql.targetPort }}
+  selector:
+    app: postgres

@@ -18,4 +18,4 @@ RUN mkdir -p ~/.streamlit && \
     echo "[server]\nheadless = true\nport = 80\nenableCORS = false\n\n" > ~/.streamlit/config.toml
 
 # 컨테이너 시작 시 Streamlit 앱을 실행
-CMD ["streamlit", "run", "front.py"]
+CMD ["streamlit", "run", "front.py", "--server.port", "80", "--server.address", "0.0.0.0"]

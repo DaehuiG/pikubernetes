@@ -21,7 +21,7 @@ def worldcup_create_page(BASE_URL):
             response = create.generate_candidates(prompt, num_candidates, BASE_URL)
             candidates = response['candidates']
             new_description = response['new_description']
-
+            new_description = prompt # 원상 복구
             if candidates:
                 new_worldcup = create.create_new_worldcup(new_description, candidates, BASE_URL)
                 if new_worldcup:
@@ -53,7 +53,7 @@ def worldcup_similar_check(BASE_URL):
         response = create.generate_candidates(st.session_state.prompt, st.session_state.similar_candidates, BASE_URL)
         candidates = response['candidates']
         new_description = response['new_description']
-
+        new_description = st.session_state.prompt # 원상복구
         if candidates:
             new_worldcup = create.create_new_worldcup(new_description, candidates, BASE_URL)
             if new_worldcup:

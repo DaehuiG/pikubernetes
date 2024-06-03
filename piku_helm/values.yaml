@@ -11,17 +11,18 @@ postgresql:
   targetPort: 5432
 
 backend:
-  image: docker.io/pengdol2/pikubernetes-backend:v1.0
+  image: docker.io/rabo8497/rabo-back:v1.0
   googleSearchKey: ${googleSearchKey}
   googleCSEId: ${googleCSEId}
-  DATABASE_URL: ${DATABASE_URL}
+  databaseUrl: ${DATABASE_URL}
   gptApiKey: ${gptApiKey}
   port: 8000
   targetPort: 8000
   protocol: TCP
 
 frontend:
-  image: docker.io/pengdol2/pikubernetes-frontend:v1.0
+  image: docker.io/rabo8497/rabo-front:v1.0
+  backendAddress: ${backendAddress}
   port: 80
   targetPort: 80
   protocol: TCP

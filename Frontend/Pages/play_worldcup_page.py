@@ -37,9 +37,16 @@ def select_worldcup_page(BASE_URL):
 
         else:
             for summary in summaries[(st.session_state.page_number-1)*10:]:
-                if st.button(f"{summary['description']} (생성일: {summary['created_at']})", key=f"summary_{summary['id']}"):
-                    st.session_state.prompt = summary['description']
-                    start.start_worldcup(summary['id'], BASE_URL)
+                column1, column2 = st.columns([0.8, 0.2])
+                with column1:
+                    if st.button(f"{summary['description']}", key=f"summary_{summary['id']}"):
+                        st.session_state.prompt = summary['description']
+                        start.start_worldcup(summary['id'], BASE_URL)
+
+                with column2:
+                    date_and_time = summary['created_at'].split('T')
+                    st.write(date_and_time[0] + " " + date_and_time[1][:8])
+                st.markdown(divider_html, unsafe_allow_html=True)
 
 
         page_number = st.session_state.get('page_number', 1)

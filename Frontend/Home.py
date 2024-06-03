@@ -16,7 +16,14 @@ def hide_sidebar():
     """, unsafe_allow_html=True)
 
 
-BASE_URL = "http://YOUR_ADDRESS_HERE:port"
+worldcup_icon_url = 'https://cdn1.iconfinder.com/data/icons/road-to-worldcup-filled-line/128/15_worldcup_fifa_champion_win_soccer_football_sport-1024.png'
+
+st.set_page_config(
+    page_title="Pikubernetes",
+    page_icon=worldcup_icon_url
+)
+
+BASE_URL = "http://34.41.189.95:8000"
 
 # 세션 상태 유지
 if 'session_id' not in st.session_state:

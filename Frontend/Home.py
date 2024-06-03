@@ -1,5 +1,6 @@
 import streamlit as st
 import functions as funcs
+import os
 
 from Pages import create_worldcup_page
 from Pages import play_worldcup_page
@@ -23,7 +24,7 @@ st.set_page_config(
     page_icon=worldcup_icon_url
 )
 
-BASE_URL = "http://34.41.189.95:8000"
+BASE_URL = os.getenv('backendAddress')
 
 # 세션 상태 유지
 if 'session_id' not in st.session_state:

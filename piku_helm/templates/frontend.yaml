@@ -19,6 +19,9 @@ spec:
         ports:
         - containerPort: {{ .Values.frontend.port }}
           name: frontend
+        env:
+        - name: backendAddress
+          value: "{{ .Values.frontend.backendAddress }}"
 ---
 apiVersion: v1
 kind: Service

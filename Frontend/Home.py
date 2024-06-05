@@ -11,6 +11,27 @@ st.set_page_config(
     page_icon=worldcup_icon_url
 )
 
+head_css = """
+<style> 
+h1 {
+    font-size: 50px;
+    font-weight: bold;
+    font-family: Arial, sans-serif;
+    text-align: left;
+    padding: 0px;
+    animation: changeColor 15s infinite alternate; /* 5초 간격으로 색이 변하며 반복 */
+}
+
+@keyframes changeColor {
+    0% { color: red; }
+    25% { color: blue; }
+    50% { color: green; }
+    75% { color: orange; }
+    100% { color: purple; }
+}
+</style>
+"""
+
 st.markdown("""
 <style>
 .element-container:has(#button-after1) + div button {
@@ -155,6 +176,7 @@ if 'similar_candidates' not in st.session_state:
 
 hide_sidebar()
 
+st.markdown(head_css, unsafe_allow_html=True)
 st.title("Pikubernetes")
 
 st.subheader("AI로 쉽게 만드는 나만의 이상형 월드컵", divider="blue")
